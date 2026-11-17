@@ -3,12 +3,17 @@ import { Store, PublicReader } from './store.js';
 import { bootstrap } from './setup.js';
 
 const TOKEN_KEY = 'serverme.token';
+const CONFIG_KEY = 'serverme.config';
 const $view = document.getElementById('view');
 const $badge = document.getElementById('badge');
 const $logout = document.getElementById('btn-logout');
 
 const getToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
 const setToken = (t) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+
+const getSaved = () => { try { return JSON.parse(localStorage.getItem(CONFIG_KEY)); } catch { return null; } };
+const setSaved = (c) => { try { c ? localStorage.setItem(CONFIG_KEY, JSON.stringify(c)) : localStorage.removeItem(CONFIG_KEY); } catch {} };
+const logout = () => { setToken(null); setSaved(null); location.reload(); };
 
 function el(tag, props = {}, ...children) {
   const n = document.createElement(tag);
@@ -26,8 +31,9 @@ function show(...nodes) { $view.replaceChildren(...nodes); }
 async function loadConfig() {
   try {
     const r = await fetch('config.json', { cache: 'no-store' });
-    return r.ok ? await r.json() : null;
-  } catch { return null; }
+    if (r.ok) return await r.json();
+  } catch {}
+  return getSaved(); // app local/desktop: site recém-criado
 }
 
 // ---------- Modo configuração (primeira vez, ainda sem config.json) ----------
@@ -61,7 +67,7 @@ function renderLogin(onDone) {
 function renderSetup(me) {
   $badge.textContent = `conectado: ${me.login}`;
   $logout.hidden = false;
-  $logout.onclick = () => { setToken(null); location.reload(); };
+  $logout.onclick = logout;
   const token = el('input', { type: 'hidden', value: getToken() || '' });
   const site = el('input', { value: 'meu-site' });
   const data = el('input', { value: 'meu-site-dados' });
@@ -80,7 +86,10 @@ function renderSetup(me) {
         onProgress: (m) => { log.textContent += m + '\n'; },
       });
       setToken(t);
-      log.textContent += `\nPronto! Seu site (pode levar ~1 min para aparecer):\n${res.siteUrl}`;
+      log.textContent += `\nPronto! Abrindo seu site aqui dentro... (online em ~1 min: ${res.siteUrl})`;
+      const config = { owner: me.login, dataRepo: data.value.trim(), branch: 'main' };
+      setSaved(config);
+      setTimeout(() => renderSite(config), 1200);
     } catch (e) {
       err.textContent = `Erro: ${e.message}`;
     } finally { go.disabled = false; }
@@ -114,7 +123,7 @@ async function renderSite(config) {
   $badge.textContent = store ? 'modo edição' : 'somente leitura';
   $badge.className = 'badge' + (store ? ' edit' : '');
   $logout.hidden = !store;
-  $logout.onclick = () => { setToken(null); location.reload(); };
+  $logout.onclick = logout;
 
   const list = el('div');
   const status = el('p', { class: 'error' });
